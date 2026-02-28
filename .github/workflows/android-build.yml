@@ -1,4 +1,4 @@
-name: Build APK (Smart Detect)
+name: Build APK (Auto Detect App Module)
 
 on:
   push:
@@ -23,97 +23,74 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Detect project root (settings.gradle)
+      - name: Detect Android project root (settings.gradle)
+        id: root
         shell: bash
         run: |
           set -euo pipefail
-          ROOT_DIR="$(dirname "$(find . -maxdepth 8 -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)")"
+          ROOT_DIR="$(dirname "$(find . -maxdepth 6 -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)")"
           if [ -z "$ROOT_DIR" ]; then
             echo "❌ Could not find settings.gradle / settings.gradle.kts" >&2
             exit 1
           fi
+          # Normalize "." root
+          if [ "$ROOT_DIR" = "." ]; then ROOT_DIR="."; fi
           echo "PROJECT_ROOT=$ROOT_DIR" >> "$GITHUB_ENV"
-          echo "✅ PROJECT_ROOT=$ROOT_DIR"
+          echo "Detected PROJECT_ROOT=$ROOT_DIR"
 
-      - name: Find a Debug assemble task across modules
+      - name: Detect Android Application module (com.android.application)
+        id: detect
         shell: bash
         run: |
           set -euo pipefail
           cd "$PROJECT_ROOT"
 
-          SETTINGS_FILE=""
-          if [ -f settings.gradle ]; then SETTINGS_FILE="settings.gradle"; fi
-          if [ -f settings.gradle.kts ]; then SETTINGS_FILE="settings.gradle.kts"; fi
-          if [ -z "$SETTINGS_FILE" ]; then
-            echo "❌ settings file not found in PROJECT_ROOT" >&2
+          # Find module build files that declare Android application plugin (Groovy or Kotlin DSL)
+          CANDIDATE="$(find . -maxdepth 6 -type f \( -name build.gradle -o -name build.gradle.kts \) \
+            -print0 | xargs -0 -I{} bash -lc '
+              f="{}"
+              if grep -qE "com\\.android\\.application" "$f"; then
+                echo "$f"
+              fi
+            ' | head -n 1 || true)"
+
+          if [ -z "$CANDIDATE" ]; then
+            echo "❌ Could not find a module with com.android.application in build.gradle(.kts)" >&2
+            echo "---- Listing modules from settings ----" >&2
+            if [ -f settings.gradle ]; then sed -n '1,200p' settings.gradle >&2; fi
+            if [ -f settings.gradle.kts ]; then sed -n '1,200p' settings.gradle.kts >&2; fi
             exit 1
           fi
 
-          echo "Using $SETTINGS_FILE"
+          MODULE_DIR="$(dirname "$CANDIDATE")"
+          # Convert ./some/module -> :some:module
+          MODULE_PATH=":${MODULE_DIR#./}"
+          MODULE_PATH="${MODULE_PATH//\//:}"
 
-          # Extract includes like :app, :mobile:app from Groovy/KTS include(...) / include("...")
-          MODULES=$(grep -Eo 'include\([^)]*\)' "$SETTINGS_FILE" \
-            | sed -E 's/include\((.*)\)/\1/' \
-            | tr ',' '\n' \
-            | sed -E 's/["'\'']//g; s/[[:space:]]//g' \
-            | grep -E '^:.*' || true)
+          echo "APP_MODULE=$MODULE_PATH" >> "$GITHUB_ENV"
+          echo "MODULE_DIR=$MODULE_DIR" >> "$GITHUB_ENV"
+          echo "Detected application module: $MODULE_PATH (dir=$MODULE_DIR, file=$CANDIDATE)"
 
-          # Fallback: if parsing failed, try common module names
-          if [ -z "$MODULES" ]; then
-            MODULES=":app
-:mobile
-:androidApp"
-          fi
-
-          echo "Modules to probe:"
-          echo "$MODULES" | sed 's/^/ - /'
-
-          FOUND_TASK=""
-          FOUND_MODULE=""
-          while read -r M; do
-            [ -z "$M" ] && continue
-            echo "---- Probing $M ----"
-            if ./gradlew "$M:tasks" --all --console=plain > /tmp/tasks.txt 2>/dev/null; then
-              # Prefer assembleDebug, else any assemble*Debug (flavors)
-              if grep -qE '^assembleDebug\b' /tmp/tasks.txt; then
-                FOUND_TASK="$M:assembleDebug"
-                FOUND_MODULE="$M"
-                break
-              fi
-              CAND=$(grep -Eo '^assemble[A-Za-z0-9]*Debug\b' /tmp/tasks.txt | head -n 1 || true)
-              if [ -n "$CAND" ]; then
-                FOUND_TASK="$M:$CAND"
-                FOUND_MODULE="$M"
-                break
-              fi
-            else
-              echo "Skipping $M (no tasks / not a gradle module)"
-            fi
-          done <<< "$MODULES"
-
-          if [ -z "$FOUND_TASK" ]; then
-            echo "❌ لم أجد أي assemble*Debug task في أي module." >&2
-            echo "جرّبت modules من settings. راجع settings.gradle وتأكد في module تطبيق." >&2
-            echo "Tip: شغّل محلياً: ./gradlew projects" >&2
-            exit 1
-          fi
-
-          echo "✅ FOUND_MODULE=$FOUND_MODULE" | tee -a "$GITHUB_ENV"
-          echo "✅ BUILD_TASK=$FOUND_TASK" | tee -a "$GITHUB_ENV"
+      - name: Show tasks (for debugging)
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_ROOT"
+          ./gradlew "$APP_MODULE:tasks" --all --console=plain | sed -n '1,200p'
 
       - name: Build Debug APK
         shell: bash
         run: |
           set -euo pipefail
           cd "$PROJECT_ROOT"
-          echo "Building with: $BUILD_TASK"
-          ./gradlew "$BUILD_TASK" --no-daemon --stacktrace
+          ./gradlew "$APP_MODULE:assembleDebug" --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: debug-apk
+          name: peekr-debug-apk
           path: |
-            **/build/outputs/apk/**/*.apk
+            ${{ env.PROJECT_ROOT }}/${{ env.MODULE_DIR }}/build/outputs/apk/debug/*.apk
+            ${{ env.PROJECT_ROOT }}/${{ env.MODULE_DIR }}/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 7

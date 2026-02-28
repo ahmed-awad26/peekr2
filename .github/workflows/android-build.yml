@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK Auto Detect
 
 on:
   push:
@@ -21,11 +21,26 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Build Debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - name: List Projects
+        run: ./gradlew projects
+
+      - name: Find Android Application Module
+        id: find_module
+        shell: bash
+        run: |
+          MODULE=$(./gradlew projects | grep "Project ':" | awk -F"'" '{print $2}' | head -n 1)
+          echo "Detected module: $MODULE"
+          echo "module_name=$MODULE" >> $GITHUB_OUTPUT
+
+      - name: List Tasks
+        run: ./gradlew ${{ steps.find_module.outputs.module_name }}:tasks --all
+
+      - name: Build APK
+        run: ./gradlew ${{ steps.find_module.outputs.module_name }}:assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: peekr-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: debug-apk
+          path: |
+            **/build/outputs/apk/debug/*.apk

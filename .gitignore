@@ -1,0 +1,27 @@
+# Android
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.ap_
+
+# مهم جداً - لا ترفع على GitHub
+google-services.json
+secrets.properties
+app/src/main/jniLibs/
+app/libs/*.jar
+app/libs/*.so
+*.jks
+*.keystore
+local.properties
+
+# Gradle
+.gradle/
+build/

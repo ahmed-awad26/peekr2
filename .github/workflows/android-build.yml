@@ -31,10 +31,26 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Optionally override Gradle distribution URL
-        if: ${{ env.GRADLE_DISTRIBUTION_URL != '' }}
+      - name: Locate Gradle wrapper properties
+        id: wrapper_props
+        shell: bash
         run: |
-          sed -i "s#^distributionUrl=.*#distributionUrl=${GRADLE_DISTRIBUTION_URL}#" gradle/wrapper/gradle-wrapper.properties
+          set -euo pipefail
+          WRAPPER_PROPS=$(find . -type f -path "*/gradle/wrapper/gradle-wrapper.properties" | head -n 1 || true)
+          if [[ -z "${WRAPPER_PROPS}" ]]; then
+            echo "wrapper_props_path=" >> "$GITHUB_OUTPUT"
+            echo "No gradle/wrapper/gradle-wrapper.properties found in repository; skipping distributionUrl override."
+          else
+            echo "wrapper_props_path=${WRAPPER_PROPS}" >> "$GITHUB_OUTPUT"
+            echo "Found wrapper properties at: ${WRAPPER_PROPS}"
+          fi
+
+      - name: Optionally override Gradle distribution URL
+        if: ${{ env.GRADLE_DISTRIBUTION_URL != '' && steps.wrapper_props.outputs.wrapper_props_path != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i "s#^distributionUrl=.*#distributionUrl=${GRADLE_DISTRIBUTION_URL}#" "${{ steps.wrapper_props.outputs.wrapper_props_path }}"
           echo "Using custom distributionUrl from secret"
 
       - name: Validate Gradle Wrapper

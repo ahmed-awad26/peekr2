@@ -1,111 +1,31 @@
-name: Android Build
+name: Build APK
 
 on:
   push:
-    branches:
-      - "**"
-  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
-permissions:
-  contents: read
-
-concurrency:
-  group: android-build-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  build-debug-apk:
-    name: Build Debug APK
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
-      HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
-      NO_PROXY: ${{ secrets.NO_PROXY }}
-      GRADLE_DISTRIBUTION_URL: ${{ secrets.GRADLE_DISTRIBUTION_URL }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Locate Gradle wrapper properties
-        id: wrapper_props
-        shell: bash
-        run: |
-          set -euo pipefail
-          WRAPPER_PROPS=$(find . -type f -path "*/gradle/wrapper/gradle-wrapper.properties" | head -n 1 || true)
-          if [[ -z "${WRAPPER_PROPS}" ]]; then
-            echo "wrapper_props_path=" >> "$GITHUB_OUTPUT"
-            echo "No gradle/wrapper/gradle-wrapper.properties found in repository; skipping distributionUrl override."
-          else
-            echo "wrapper_props_path=${WRAPPER_PROPS}" >> "$GITHUB_OUTPUT"
-            echo "Found wrapper properties at: ${WRAPPER_PROPS}"
-          fi
-
-      - name: Optionally override Gradle distribution URL
-        if: ${{ env.GRADLE_DISTRIBUTION_URL != '' && steps.wrapper_props.outputs.wrapper_props_path != '' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          sed -i "s#^distributionUrl=.*#distributionUrl=${GRADLE_DISTRIBUTION_URL}#" "${{ steps.wrapper_props.outputs.wrapper_props_path }}"
-          echo "Using custom distributionUrl from secret"
-
-      - name: Validate Gradle Wrapper
-        uses: gradle/actions/wrapper-validation@v4
+      - uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
 
-      - name: Detect Android app module and build task
-        id: detect_build
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP_BUILD_FILE=$(find . -maxdepth 3 -type f -name "build.gradle" | xargs grep -l "id 'com.android.application'" | head -n 1 || true)
-          if [[ -z "${APP_BUILD_FILE}" ]]; then
-            echo "Could not find build.gradle with com.android.application plugin" >&2
-            exit 1
-          fi
+      - name: Build Debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-          APP_DIR=$(dirname "${APP_BUILD_FILE}" | sed 's#^\./##')
-          APP_MODULE=":${APP_DIR//\//:}"
-          echo "Detected app module: ${APP_MODULE} (${APP_BUILD_FILE})"
-
-          ./gradlew "${APP_MODULE}:tasks" --all --console=plain > app_tasks.txt
-
-          if grep -qE "^assembleDebug\b" app_tasks.txt; then
-            BUILD_TASK="${APP_MODULE}:assembleDebug"
-            ARTIFACT_GLOB="${APP_DIR}/build/outputs/apk/debug/*.apk"
-          elif grep -qE "^assemble\b" app_tasks.txt; then
-            BUILD_TASK="${APP_MODULE}:assemble"
-            ARTIFACT_GLOB="${APP_DIR}/build/outputs/apk/**/*.apk"
-          else
-            echo "No assemble tasks were found for ${APP_MODULE}" >&2
-            sed -n '1,200p' app_tasks.txt >&2
-            exit 1
-          fi
-
-          echo "build_task=${BUILD_TASK}" >> "$GITHUB_OUTPUT"
-          echo "artifact_glob=${ARTIFACT_GLOB}" >> "$GITHUB_OUTPUT"
-          echo "Using build task: ${BUILD_TASK}"
-          echo "Artifact glob: ${ARTIFACT_GLOB}"
-
-      - name: Build APK
-        run: ./gradlew "${{ steps.detect_build.outputs.build_task }}" --stacktrace
-
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: peekr-debug-apk
-          path: ${{ steps.detect_build.outputs.artifact_glob }}
-          if-no-files-found: error
-          retention-days: 7
+          path: app/build/outputs/apk/debug/*.apk

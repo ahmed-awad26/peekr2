@@ -1,31 +1,55 @@
-================================================
-Peekr - مشروع كامل جاهز
-================================================
-
-خطوات فتح المشروع في Android Studio:
---------------------------------------
-1. افتح Android Studio
-2. اضغط "Open"
-3. اختار مجلد Peekr_Complete ده
-4. اضغط OK
-5. استنى Gradle يخلص (دقيقتين تقريباً)
-6. اضغط Run ▶
-
-ملاحظات مهمة:
---------------
-- TDLib (تليجرام): محتاج تحمله يدوياً من telegram.org
-  وتحطه في app/libs/
-  
-- WhatsApp: محتاج Termux + Node.js على نفس الموبايل
-
-- YouTube: محتاج API Key من Google Cloud Console
-  تضيفه في الإعدادات > مفاتيح API
-
-- Facebook: محتاج Access Token من developers.facebook.com
-
-- Google Drive Backup: محتاج google-services.json
-  من console.cloud.google.com
-
-================================================
-كل الكود جاهز - بالتوفيق! 🚀
-================================================
+diff --git a/HOW_TO_USE.txt b/HOW_TO_USE.txt
+index e06d06a77901682eef7a47085258c99aebc56a31..6862fe8d7c3f83821fd1a105983e4a7bf32b3be1 100644
+--- a/HOW_TO_USE.txt
++++ b/HOW_TO_USE.txt
+@@ -7,25 +7,50 @@ Peekr - مشروع كامل جاهز
+ 1. افتح Android Studio
+ 2. اضغط "Open"
+ 3. اختار مجلد Peekr_Complete ده
+ 4. اضغط OK
+ 5. استنى Gradle يخلص (دقيقتين تقريباً)
+ 6. اضغط Run ▶
+ 
+ ملاحظات مهمة:
+ --------------
+ - TDLib (تليجرام): محتاج تحمله يدوياً من telegram.org
+   وتحطه في app/libs/
+   
+ - WhatsApp: محتاج Termux + Node.js على نفس الموبايل
+ 
+ - YouTube: محتاج API Key من Google Cloud Console
+   تضيفه في الإعدادات > مفاتيح API
+ 
+ - Facebook: محتاج Access Token من developers.facebook.com
+ 
+ - Google Drive Backup: محتاج google-services.json
+   من console.cloud.google.com
+ 
+ ================================================
+ كل الكود جاهز - بالتوفيق! 🚀
+ ================================================
++
++بناء APK أونلاين عبر GitHub Actions:
++-----------------------------------
++1) ارفع المشروع على GitHub
++2) ادخل تبويب Actions
++3) شغّل Workflow باسم: Android Build (أو سيتم تشغيله تلقائيًا مع push)
++4) بعد انتهاء التشغيل، حمّل الملف من Artifacts باسم: peekr-debug-apk
++
++حل مشاكل البروكسي / الأوفلاين للبناء:
++-----------------------------------
++محليًا (Local):
++- استخدم السكربت:
++  ./scripts/build_with_proxy.sh
++- مع بروكسي:
++  HTTP_PROXY_HOST=proxy.host HTTP_PROXY_PORT=8080 HTTPS_PROXY_HOST=proxy.host HTTPS_PROXY_PORT=8080 ./scripts/build_with_proxy.sh
++- مع ملف Gradle أوفلاين:
++  GRADLE_ZIP_FILE=/path/to/gradle-8.13-bin.zip ./scripts/build_with_proxy.sh
++
++على GitHub Actions:
++- من Settings > Secrets and variables > Actions أضف (اختياريًا):
++  1) HTTP_PROXY  (مثال: http://user:pass@proxy.host:8080)
++  2) HTTPS_PROXY (مثال: http://user:pass@proxy.host:8080)
++  3) NO_PROXY    (مثال: localhost,127.0.0.1)
++  4) GRADLE_DISTRIBUTION_URL (مثال: رابط gradle-8.13-bin.zip في Release Asset)
++- Workflow سيقرأ القيم تلقائيًا ويستخدمها أثناء البناء.
